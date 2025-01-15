@@ -32,7 +32,7 @@ This script is perfect for:
    git clone https://github.com/revylab/FileShorter.git
    ```
    or
-   <a href="https://github.com/revylab/FileShorter/release">Release</a>
+   <a href="https://github.com/revylab/FileShorter/releases">Release</a>
 
 3. **Navigate to the project directory**  
    ```bash
