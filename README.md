@@ -25,23 +25,37 @@ This script is perfect for:
 
 ---
 
-## 🛠 Installation  
+## 🚀 Installation  
 
-1. Clone this repository:  
+1. **Download the script**    
    ```bash
-   git clone https://github.com/yourusername/file-management-script.git
-   cd file-management-script
-   ```  
+   git clone https://github.com/revylab/FileShorter.git
+   ```
 
-2. Run the installer:  
+2. **Navigate to the project directory**  
    ```bash
-   bash install.sh
-   ```  
+   cd FileShorter
+   ```
 
-3. Verify installation by running:  
+3. **Make the script executable**  
    ```bash
-   file-sorter help
-   ```  
+   chmod +x install
+   ```
+
+4. **Run the installer**  
+   ```bash
+   ./install
+   ```
+
+5. **Verify installation**  
+   Ensure the `rfile` command is available by checking:  
+   ```bash
+   which rfile
+   ```
+   or
+   ```bash
+   rfile help
+   ```
 
 ---
 
@@ -50,22 +64,22 @@ This script is perfect for:
 ### Basic Commands  
 - **Help**: Display all available commands.  
   ```bash
-  file-sorter help
+  rfile help
   ```  
 
 - **Version**: Show script version.  
   ```bash
-  file-sorter version
+  rfile version
   ```  
 
 - **List Supported Types**: Show all predefined file types and their extensions.  
   ```bash
-  file-sorter list
+  rfile list
   ```  
 
 - **Directory Stats**: Show statistics about the current directory.  
   ```bash
-  file-sorter stats
+  rfile stats
   ```  
 
 ---
@@ -73,32 +87,32 @@ This script is perfect for:
 ### Sorting Commands  
 - **Sort by Type** (default):  
   ```bash
-  file-sorter
+  rfile
   ```  
 
 - **Sort by Date**:  
   ```bash
-  file-sorter date
+  rfile date
   ```  
 
 - **Sort by Size**:  
   ```bash
-  file-sorter size
+  rfile size
   ```  
 
 - **Sort by Extension**:  
   ```bash
-  file-sorter extension
+  rfile extension
   ```  
 
 - **Sort Specific Type**:  
   ```bash
-  file-sorter image
+  rfile image
   ```  
 
 - **Sort Specific Extension**:  
   ```bash
-  file-sorter jpg
+  rfile jpg
   ```  
 
 ---
@@ -106,21 +120,21 @@ This script is perfect for:
 ### Management Commands  
 - **Add Custom Extension**: Add a new extension to an existing type.  
   ```bash
-  file-sorter add {type} {extension}
+  rfile add {type} {extension}
   ```  
   Example:  
   ```bash
-  file-sorter add code jsx
+  rfile add code jsx
   ```  
 
 - **View History**: Show the last 10 operations (default).  
   ```bash
-  file-sorter history
+  rfile history
   ```  
 
 - **Simulate Sorting**: Preview the organization process without moving files.  
   ```bash
-  file-sorter simulate
+  rfile simulate
   ```  
 
 ---
@@ -172,6 +186,3 @@ Feel free to submit issues or pull requests to improve this script!
 
 ## 💡 Inspiration  
 This script was created to simplify file organization and reduce manual sorting efforts.  
-```  
-
-kalo ada yang kurang atau mau ditambahin, tinggal bilang aja!
