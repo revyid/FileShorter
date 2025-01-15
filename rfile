@@ -290,7 +290,7 @@ print_usage() {
     show_version
     echo -e "\n${BLUE}Usage:${NC}"
     echo -e "${BOLD}Basic Commands:${NC}"
-    echo "  $SCRIPT_NAME                 - Move all files to type-based folders"
+    echo "  $SCRIPT_NAME                - Move all files to type-based folders"
     echo "  $SCRIPT_NAME help           - Show this help message"
     echo "  $SCRIPT_NAME version        - Show version information"
     
