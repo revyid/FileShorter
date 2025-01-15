@@ -46,7 +46,7 @@ if check_base64; then
 
     # buat file rfile
     echo -e "${process} ${yellow}creating file and moving it to bin...${reset}"
-    sleep 2
+    sleep 3
     mv ./rfile "$PREFIX/bin/rfile"
     chmod +x "$PREFIX/bin/rfile"
     echo -e "${success} ${green}file moved and executable set:${reset} $PREFIX/bin/rfile"
@@ -55,12 +55,6 @@ else
     sleep 1
     exit 1
 fi
-
-# hapus file sementara
-echo -e "${process} ${yellow}cleaning up temporary files...${reset}"
-sleep 2
-rm -f ./install ./rfile
-echo -e "${success} ${green}cleanup complete.${reset}"
 
 # selesai
 echo -e "${success} ${green}installation complete. you can now use 'rfile help' command.${reset}"
