@@ -1,0 +1,66 @@
+#!/bin/bash
+
+# warna
+green="\033[0;32m"
+red="\033[0;31m"
+yellow="\033[0;33m"
+blue="\033[0;34m"
+reset="\033[0m"
+
+# project information
+project_name="FileShorter"
+project_version="v1.0"
+project_author="RevyLab"
+project_copyright="Copyright © 2025"
+
+# simbol unik
+success="[${green}✓${reset}]"
+error="[${red}✗${reset}]"
+info="[${blue}i${reset}]"
+process="[${yellow}•${reset}]"
+
+# tampilkan informasi project
+clear
+echo -e "${info} ${blue}Project:${reset} ${project_name}"
+echo -e "${info} ${blue}Version:${reset} ${project_version}"
+echo -e "${info} ${blue}Author:${reset} ${project_author}"
+echo -e "${info} ${blue}${project_copyright}${reset}"
+echo ""
+
+# fungsi periksa base64
+check_base64() {
+    command -v base64 >/dev/null 2>&1
+}
+
+# mulai instalasi
+echo -e "${process} ${yellow}install the required packages...${reset}"
+sleep 2
+
+# instalasi base64
+pkg install -y coreutils >/dev/null 2>&1
+
+# konfirmasi instalasi base64
+if check_base64; then
+    echo -e "${success} ${green}base64 successfully installed!${reset}"
+    sleep 1
+
+    # buat file rfile
+    echo -e "${process} ${yellow}creating file and moving it to bin...${reset}"
+    sleep 2
+    mv ./rfile "$PREFIX/bin/rfile"
+    chmod +x "$PREFIX/bin/rfile"
+    echo -e "${success} ${green}file moved and executable set:${reset} $PREFIX/bin/rfile"
+else
+    echo -e "${error} ${red}base64 failed to install. aborting process.${reset}"
+    sleep 1
+    exit 1
+fi
+
+# hapus file sementara
+echo -e "${process} ${yellow}cleaning up temporary files...${reset}"
+sleep 2
+rm -f ./install ./rfile
+echo -e "${success} ${green}cleanup complete.${reset}"
+
+# selesai
+echo -e "${success} ${green}installation complete. you can now use 'rfile help' command.${reset}"

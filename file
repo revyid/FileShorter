@@ -1,0 +1,392 @@
+#!/bin/bash
+
+# Script metadata
+VERSION="2.0.0"
+SCRIPT_NAME=$(basename "$0")
+AUTHOR="RevyLab"
+YEAR=$(date +%Y)
+
+# Colors for terminal output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+# File type definitions with extensions
+declare -A file_types=(
+    ["image"]="png jpg jpeg gif bmp webp tiff svg psd ai eps raw heic"
+    ["video"]="mp4 mkv avi mov webm flv mpg mpeg wmv 3gp m4v"
+    ["text"]="txt md log conf rtf ini cfg"
+    ["document"]="pdf doc docx xlsx xls ppt pptx odt ods odp pages numbers key"
+    ["audio"]="mp3 wav m4a ogg aac flac alac wma m4b opus"
+    ["archive"]="zip rar 7z tar gz bz2 xz tar.gz tar.bz2 tgz"
+    ["code"]="py js html css php java cpp c sh ruby go rust ts jsx tsx"
+    ["script"]="bat sh ps1 vbs bash zsh fish cmd"
+    ["executable"]="exe msi app dmg deb rpm pkg"
+    ["system"]="iso img vmdk vdi vhd sys dll"
+    ["font"]="ttf otf woff woff2 eot"
+    ["data"]="csv json xml yml yaml sql db sqlite env conf toml"
+    ["ebook"]="epub mobi azw3 fb2 lit"
+    ["design"]="dwg dxf stl obj 3ds blend skp"
+    ["web"]="html htm css js php asp jsp"
+    ["crypto"]="wallet dat key pem crt cer p12 pfx"
+    ["backup"]="bak old orig backup"
+    ["temp"]="tmp temp cache swp"
+)
+
+# Config files
+CONFIG_DIR="$HOME/.config/file_sorter"
+CONFIG_FILE="$CONFIG_DIR/config"
+HISTORY_FILE="$CONFIG_DIR/history.log"
+EXCLUDE_FILE="$CONFIG_DIR/exclude"
+
+# Initialize configuration
+init_config() {
+    if [[ ! -d "$CONFIG_DIR" ]]; then
+        mkdir -p "$CONFIG_DIR"
+        echo -e "${BLUE}[i] Created config directory: $CONFIG_DIR${NC}"
+    fi
+    
+    # Create default exclude file if it doesn't exist
+    if [[ ! -f "$EXCLUDE_FILE" ]]; then
+        echo ".git/" > "$EXCLUDE_FILE"
+        echo "node_modules/" >> "$EXCLUDE_FILE"
+        echo ".DS_Store" >> "$EXCLUDE_FILE"
+        echo "Thumbs.db" >> "$EXCLUDE_FILE"
+    fi
+    
+    # Create history file if it doesn't exist
+    touch "$HISTORY_FILE"
+}
+
+# Function to log operations
+log_operation() {
+    local operation=$1
+    local details=$2
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $operation: $details" >> "$HISTORY_FILE"
+}
+
+# Function to convert size to human-readable format
+human_readable_size() {
+    local size=$1
+    local units=("B" "KB" "MB" "GB" "TB")
+    local unit=0
+    
+    while (( size > 1024 && unit < ${#units[@]}-1 )); do
+        size=$(echo "scale=2; $size/1024" | bc)
+        ((unit++))
+    done
+    
+    printf "%.2f %s" $size "${units[$unit]}"
+}
+
+# Function to count files and get total size
+get_directory_stats() {
+    local dir=$1
+    local count=$(find "$dir" -type f | wc -l)
+    local size=$(du -sb "$dir" | cut -f1)
+    echo "${count} files, $(human_readable_size $size)"
+}
+
+# Function to display progress
+show_progress() {
+    local file=$1
+    local action=$2
+    echo -e "${GREEN}[✓] $action:${NC} $file"
+}
+
+# Function to show error
+show_error() {
+    local message=$1
+    echo -e "${RED}[✗] Error: $message${NC}"
+}
+
+# Function to show warning
+show_warning() {
+    local message=$1
+    echo -e "${YELLOW}[!] Warning: $message${NC}"
+}
+
+# Function to check if file should be excluded
+should_exclude() {
+    local file=$1
+    while IFS= read -r pattern; do
+        [[ -n "$pattern" && "$file" == *"$pattern"* ]] && return 0
+    done < "$EXCLUDE_FILE"
+    return 1
+}
+
+# Function to load custom extensions
+load_custom_extensions() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        while IFS='=' read -r type exts; do
+            if [[ -n "$type" && -n "$exts" ]]; then
+                file_types["$type"]="${file_types["$type"]} $exts"
+            fi
+        done < "$CONFIG_FILE"
+    fi
+}
+
+# Function to add custom extension
+add_custom_extension() {
+    local type=$1
+    local ext=$2
+    
+    # Create or append to config file
+    mkdir -p "$(dirname "$CONFIG_FILE")"
+    echo "$type=$ext" >> "$CONFIG_FILE"
+    echo -e "${GREEN}[✓] Added custom extension .$ext to type $type${NC}"
+    log_operation "ADD_EXTENSION" "Type: $type, Extension: $ext"
+    load_custom_extensions
+}
+
+# Function to check if extension belongs to a type
+extension_in_type() {
+    local ext=$1
+    local type=$2
+    [[ " ${file_types[$type]} " =~ " $ext " ]]
+}
+
+# Function to get file type from extension
+get_file_type() {
+    local ext=$1
+    for type in "${!file_types[@]}"; do
+        if extension_in_type "$ext" "$type"; then
+            echo "$type"
+            return
+        fi
+    done
+    echo "other"
+}
+
+# Function to create date-based directory structure
+create_date_structure() {
+    local file=$1
+    local date=$(stat -f "%Sm" -t "%Y-%m-%d" "$file" 2>/dev/null || stat --format="%y" "$file" 2>/dev/null | cut -d' ' -f1)
+    local year=$(echo $date | cut -d'-' -f1)
+    local month=$(echo $date | cut -d'-' -f2)
+    local day=$(echo $date | cut -d'-' -f3)
+    echo "$year/$month/$day"
+}
+
+# Function to create size-based directory structure
+create_size_structure() {
+    local file=$1
+    local size=$(stat -f "%z" "$file" 2>/dev/null || stat --format="%s" "$file")
+    
+    if ((size < 1024)); then
+        echo "small"
+    elif ((size < 1024*1024)); then
+        echo "medium"
+    else
+        echo "large"
+    fi
+}
+
+# Function to move files
+move_files() {
+    local target=$1
+    local mode=$2
+    local simulate=${3:-false}
+    local any_moved=false
+    local total_size=0
+    local file_count=0
+    
+    echo -e "${BLUE}[i] Starting file organization...${NC}"
+    
+    for file in *; do
+        if [[ -f "$file" && "$file" != "$(basename $0)" ]]; then
+            if should_exclude "$file"; then
+                show_warning "Skipping excluded file: $file"
+                continue
+            fi
+            
+            local ext="${file##*.}"
+            ext=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
+            local type=$(get_file_type "$ext")
+            local dest_dir=""
+            
+            case "$mode" in
+                "date")
+                    dest_dir=$(create_date_structure "$file")
+                    ;;
+                "size")
+                    dest_dir=$(create_size_structure "$file")
+                    ;;
+                "type")
+                    dest_dir="$type"
+                    ;;
+                "extension")
+                    dest_dir="$ext"
+                    ;;
+                *)
+                    dest_dir="$type"
+                    ;;
+            esac
+            
+            # Skip if target specified and doesn't match
+            if [[ -n "$target" && "$type" != "$target" && "$ext" != "$target" ]]; then
+                continue
+            fi
+            
+            # Create directory if needed
+            if [[ ! -d "$dest_dir" && "$simulate" == "false" ]]; then
+                mkdir -p "$dest_dir"
+                echo -e "${BLUE}[i] Created directory:${NC} $dest_dir"
+            fi
+            
+            # Move or simulate moving the file
+            if [[ "$simulate" == "true" ]]; then
+                show_progress "$file" "Would move to $dest_dir"
+            else
+                mv "$file" "$dest_dir/"
+                show_progress "$file" "Moved to $dest_dir"
+                log_operation "MOVE" "$file -> $dest_dir/"
+            fi
+            
+            any_moved=true
+            ((file_count++))
+            total_size=$((total_size + $(stat -f "%z" "$file" 2>/dev/null || stat --format="%s" "$file")))
+        fi
+    done
+    
+    if [[ "$any_moved" == "false" ]]; then
+        echo -e "${YELLOW}[!] No files were moved${NC}"
+    else
+        echo -e "\n${GREEN}[✓] Operation completed:${NC}"
+        echo "   Files processed: $file_count"
+        echo "   Total size: $(human_readable_size $total_size)"
+    fi
+}
+
+# Function to list supported types
+list_types() {
+    echo -e "${BLUE}Supported file types:${NC}"
+    for type in "${!file_types[@]}"; do
+        echo -e "${BOLD}$type${NC}:"
+        echo "  ${file_types[$type]}" | fold -s -w 70 | sed 's/^/    /'
+    done
+}
+
+# Function to show version
+show_version() {
+    echo -e "${BOLD}${CYAN}$AUTHOR${NC}"
+    echo -e "Version: $VERSION"
+    echo -e "Copyright (c) $YEAR"
+}
+
+# Function to show history
+show_history() {
+    local lines=${1:-10}
+    echo -e "${BLUE}Recent operations (last $lines):${NC}"
+    tail -n "$lines" "$HISTORY_FILE"
+}
+
+# Function to print usage information
+print_usage() {
+    show_version
+    echo -e "\n${BLUE}Usage:${NC}"
+    echo -e "${BOLD}Basic Commands:${NC}"
+    echo "  $SCRIPT_NAME                 - Move all files to type-based folders"
+    echo "  $SCRIPT_NAME help           - Show this help message"
+    echo "  $SCRIPT_NAME version        - Show version information"
+    
+    echo -e "\n${BOLD}Sorting Commands:${NC}"
+    echo "  $SCRIPT_NAME date           - Sort files by creation date (YYYY/MM/DD)"
+    echo "  $SCRIPT_NAME type           - Sort files by type (default behavior)"
+    echo "  $SCRIPT_NAME extension      - Sort files by extension"
+    echo "  $SCRIPT_NAME size           - Sort files by size (small/medium/large)"
+    
+    echo -e "\n${BOLD}File Type Commands:${NC}"
+    echo "  $SCRIPT_NAME {type}        - Move only files of specified type"
+    echo "  $SCRIPT_NAME {extension}   - Move only files with specified extension"
+    
+    echo -e "\n${BOLD}Management Commands:${NC}"
+    echo "  $SCRIPT_NAME add type ext  - Add custom extension to type"
+    echo "  $SCRIPT_NAME list          - List all supported file types"
+    echo "  $SCRIPT_NAME history [n]   - Show last n operations (default: 10)"
+    echo "  $SCRIPT_NAME simulate      - Show what would be moved without moving"
+    echo "  $SCRIPT_NAME stats         - Show statistics about current directory"
+    
+    echo -e "\n${BOLD}Examples:${NC}"
+    echo "  $SCRIPT_NAME               # Sort all files by type"
+    echo "  $SCRIPT_NAME date          # Sort by date"
+    echo "  $SCRIPT_NAME image         # Move only image files"
+    echo "  $SCRIPT_NAME add code jsx  # Add .jsx extension to code type"
+}
+
+# Function to show directory statistics
+show_stats() {
+    echo -e "${BLUE}Directory Statistics:${NC}"
+    echo -e "${BOLD}Current directory:${NC} $(pwd)"
+    echo -e "${BOLD}Total:${NC} $(get_directory_stats ".")"
+    
+    echo -e "\n${BOLD}By type:${NC}"
+    for type in "${!file_types[@]}"; do
+        local count=$(find . -maxdepth 1 -type f -exec sh -c "echo {} | grep -iE '\\.($(echo ${file_types[$type]} | tr ' ' '|'))$'" \; | wc -l)
+        if [[ $count -gt 0 ]]; then
+            echo "  $type: $count files"
+        fi
+    done
+}
+
+# Initialize configuration
+init_config
+load_custom_extensions
+
+# Main logic
+case "$1" in
+    "help"|"-h"|"--help")
+        print_usage
+        ;;
+    "version"|"-v"|"--version")
+        show_version
+        ;;
+    "list"|"types")
+        list_types
+        ;;
+    "history")
+        show_history "${2:-10}"
+        ;;
+    "stats")
+        show_stats
+        ;;
+    "simulate")
+        move_files "" "type" true
+        ;;
+    "date")
+        move_files "" "date"
+        ;;
+    "type")
+        move_files "" "type"
+        ;;
+    "size")
+        move_files "" "size"
+        ;;
+    "extension")
+        move_files "" "extension"
+        ;;
+    "add")
+        if [[ -n "$2" && -n "$3" ]]; then
+            add_custom_extension "$2" "$3"
+        else
+            show_error "Usage: $SCRIPT_NAME add {type} {extension}"
+            exit 1
+        fi
+        ;;
+    "")
+        move_files "" "type"
+        ;;
+    *)
+        if [[ -n "${file_types[$1]}" ]]; then
+            move_files "$1" "type"
+        else
+            # Check if it's an extension
+            ext=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+            move_files "$ext" "type"
+        fi
+        ;;
+esac
