@@ -31,23 +31,25 @@ This script is perfect for:
    ```bash
    git clone https://github.com/revylab/FileShorter.git
    ```
+   or
+   <a href="https://github.com/revylab/FileShorter/release">Release</a>
 
-2. **Navigate to the project directory**  
+3. **Navigate to the project directory**  
    ```bash
    cd FileShorter
    ```
 
-3. **Make the script executable**  
+4. **Make the script executable**  
    ```bash
    chmod +x install
    ```
 
-4. **Run the installer**  
+5. **Run the installer**  
    ```bash
    ./install
    ```
 
-5. **Verify installation**  
+6. **Verify installation**  
    Ensure the `rfile` command is available by checking:  
    ```bash
    which rfile
