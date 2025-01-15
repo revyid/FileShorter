@@ -34,7 +34,7 @@ check_base64() {
 
 # mulai instalasi
 echo -e "${process} ${yellow}install the required packages...${reset}"
-sleep 2
+sleep 3
 
 # instalasi base64
 pkg install -y coreutils >/dev/null 2>&1
@@ -42,7 +42,7 @@ pkg install -y coreutils >/dev/null 2>&1
 # konfirmasi instalasi base64
 if check_base64; then
     echo -e "${success} ${green}base64 successfully installed!${reset}"
-    sleep 1
+    sleep 2
 
     # buat file rfile
     echo -e "${process} ${yellow}creating file and moving it to bin...${reset}"
