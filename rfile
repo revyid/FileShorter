@@ -106,7 +106,7 @@ cleanup() {
     # Remove lock file
     if [ -f "$LOCK_FILE" ]; then
         rm -f "$LOCK_FILE"
-    }
+    fi
     
     # Save statistics
     save_statistics
