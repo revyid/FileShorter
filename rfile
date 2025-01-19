@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Script metadata
-VERSION="2.0.0"
+VERSION="4.0.0"
 SCRIPT_NAME=$(basename "$0")
-AUTHOR="RevyLab"
+AUTHOR="RevyLab Complete"
 YEAR=$(date +%Y)
 
 # Colors for terminal output
@@ -12,381 +12,671 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
 BOLD='\033[1m'
+DIM='\033[2m'
+UNDERLINE='\033[4m'
+BLINK='\033[5m'
+REVERSE='\033[7m'
+HIDDEN='\033[8m'
 NC='\033[0m'
 
 # File type definitions with extensions
 declare -A file_types=(
-    ["image"]="png jpg jpeg gif bmp webp tiff svg psd ai eps raw heic"
-    ["video"]="mp4 mkv avi mov webm flv mpg mpeg wmv 3gp m4v"
-    ["text"]="txt md log conf rtf ini cfg"
-    ["document"]="pdf doc docx xlsx xls ppt pptx odt ods odp pages numbers key"
-    ["audio"]="mp3 wav m4a ogg aac flac alac wma m4b opus"
-    ["archive"]="zip rar 7z tar gz bz2 xz tar.gz tar.bz2 tgz"
-    ["code"]="py js html css php java cpp c sh ruby go rust ts jsx tsx"
-    ["script"]="bat sh ps1 vbs bash zsh fish cmd"
-    ["executable"]="exe msi app dmg deb rpm pkg"
-    ["system"]="iso img vmdk vdi vhd sys dll"
-    ["font"]="ttf otf woff woff2 eot"
-    ["data"]="csv json xml yml yaml sql db sqlite env conf toml"
-    ["ebook"]="epub mobi azw3 fb2 lit"
-    ["design"]="dwg dxf stl obj 3ds blend skp"
-    ["web"]="html htm css js php asp jsp"
-    ["crypto"]="wallet dat key pem crt cer p12 pfx"
-    ["backup"]="bak old orig backup"
-    ["temp"]="tmp temp cache swp"
+    ["images"]="png jpg jpeg gif bmp webp tiff svg psd ai eps raw heic avif jfif tga pcx ico icns xcf jpx j2k jxr hdr dds"
+    ["videos"]="mp4 mkv avi mov webm flv mpg mpeg wmv 3gp m4v ts vob rmvb m2ts mts divx xvid asf ogv f4v"
+    ["documents"]="txt md log conf rtf ini cfg pdf doc docx xlsx xls ppt pptx odt ods odp pages numbers key wpd wps djvu"
+    ["audio"]="mp3 wav m4a ogg aac flac alac wma m4b opus mid midi aiff ra dsf dff ape wv mpc"
+    ["archives"]="zip rar 7z tar gz bz2 xz tgz bz tbz2 tbz tlz txz lz lzma z cab iso img dmg pkg"
+    ["code"]="py js html css php java cpp c rb go rs ts jsx tsx vue php pl kt scala lua swift r bas sh bash zsh fish tcl"
+    ["development"]="json xml yml yaml sql db sqlite env conf toml lock gradle pom maven ant ivy npm bower composer"
+    ["fonts"]="ttf otf woff woff2 eot pfm pfb afm"
+    ["design"]="dwg dxf stl obj 3ds blend skp xd fig sketch ai psd indd eps cdr"
+    ["downloads"]="part crdownload tmp temp downloading incomplete"
+    ["books"]="epub mobi azw azw3 fb2 lit lrf cbr cbz cb7 cbt cba"
+    ["subtitles"]="srt sub idx ass ssa smi"
+    ["data"]="csv tsv dat dta sav por xlsx mdb accdb dbf"
+    ["web"]="htm xhtml php asp aspx jsp cfm"
+    ["certificates"]="crt cer pem p12 pfx key csr"
+    ["executables"]="exe msi app deb rpm pkg dmg"
 )
 
-# Config files
-CONFIG_DIR="$HOME/.config/file_sorter"
-CONFIG_FILE="$CONFIG_DIR/config"
-HISTORY_FILE="$CONFIG_DIR/history.log"
-EXCLUDE_FILE="$CONFIG_DIR/exclude"
+# Protected patterns
+declare -a protected_patterns=(
+    "/system" "/sys" "/bin" "/sbin" "/usr" "/etc" "/var" "/boot" "/dev"
+    "/proc" "/root" "/home" "/lib" "/lib64" "/run" "/snap" "/opt"
+    "android" "Windows" "Program Files" "AppData" ".config" ".local"
+    ".cache" ".mozilla" ".ssh" ".npm" "node_modules" ".git"
+    "$HOME/Library" "$HOME/System" "$HOME/.Trash"
+)
 
-# Initialize configuration
-init_config() {
-    if [[ ! -d "$CONFIG_DIR" ]]; then
-        mkdir -p "$CONFIG_DIR"
-        echo -e "${BLUE}[i] Created config directory: $CONFIG_DIR${NC}"
+# Script settings
+VERBOSE=false
+DRY_RUN=false
+UNSAFE_MODE=false
+INTERACTIVE=false
+FORCE_MODE=false
+DEBUG_MODE=false
+QUIET_MODE=false
+MAX_DEPTH=5
+MINIMUM_FREE_SPACE=1048576  # 1GB in KB
+BACKUP_ENABLED=true
+COMPRESSION_ENABLED=false
+CHECKSUM_VERIFY=true
+LOG_LEVEL=1  # 0=none, 1=error, 2=warn, 3=info, 4=debug
+SORT_MODE="smart"
+FOLLOW_SYMLINKS=false
+
+# Paths
+CONFIG_DIR="$HOME/.config/complete_sorter"
+CACHE_DIR="$CONFIG_DIR/cache"
+BACKUP_DIR="$CONFIG_DIR/backups"
+LOG_DIR="$CONFIG_DIR/logs"
+RULES_FILE="$CONFIG_DIR/rules.json"
+STATS_FILE="$CONFIG_DIR/stats.json"
+HISTORY_FILE="$LOG_DIR/history.log"
+ERROR_LOG="$LOG_DIR/error.log"
+DEBUG_LOG="$LOG_DIR/debug.log"
+
+# Temporary files
+TEMP_DIR="/tmp/file_sorter_$$"
+LOCK_FILE="/tmp/file_sorter.lock"
+
+# Function to show fancy banner
+show_banner() {
+    echo -e "${CYAN}"
+    echo "╔══════════════════════════════════════════╗"
+    echo "║     Complete File Sorting System v$VERSION     ║"
+    echo "║            By $AUTHOR            ║"
+    echo "║         Copyright (c) $YEAR          ║"
+    echo "╚══════════════════════════════════════════╝"
+    echo -e "${NC}"
+}
+
+# Function to handle cleanup on exit
+cleanup() {
+    local exit_code=$?
+    log_operation "INFO" "CLEANUP" "Starting cleanup process"
+    
+    # Remove temporary files
+    if [ -d "$TEMP_DIR" ]; then
+        rm -rf "$TEMP_DIR"
     fi
     
-    # Create default exclude file if it doesn't exist
-    if [[ ! -f "$EXCLUDE_FILE" ]]; then
-        echo ".git/" > "$EXCLUDE_FILE"
-        echo "node_modules/" >> "$EXCLUDE_FILE"
-        echo ".DS_Store" >> "$EXCLUDE_FILE"
-        echo "Thumbs.db" >> "$EXCLUDE_FILE"
-    fi
+    # Remove lock file
+    if [ -f "$LOCK_FILE" ]; then
+        rm -f "$LOCK_FILE"
+    }
     
-    # Create history file if it doesn't exist
-    touch "$HISTORY_FILE"
-}
-
-# Function to log operations
-log_operation() {
-    local operation=$1
-    local details=$2
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $operation: $details" >> "$HISTORY_FILE"
-}
-
-# Function to convert size to human-readable format
-human_readable_size() {
-    local size=$1
-    local units=("B" "KB" "MB" "GB" "TB")
-    local unit=0
+    # Save statistics
+    save_statistics
     
-    while (( size > 1024 && unit < ${#units[@]}-1 )); do
-        size=$(echo "scale=2; $size/1024" | bc)
-        ((unit++))
-    done
+    # Clean old logs if needed
+    rotate_logs
     
-    printf "%.2f %s" $size "${units[$unit]}"
+    log_operation "INFO" "CLEANUP" "Cleanup completed with exit code $exit_code"
+    exit $exit_code
 }
 
-# Function to count files and get total size
-get_directory_stats() {
-    local dir=$1
-    local count=$(find "$dir" -type f | wc -l)
-    local size=$(du -sb "$dir" | cut -f1)
-    echo "${count} files, $(human_readable_size $size)"
-}
-
-# Function to display progress
-show_progress() {
-    local file=$1
-    local action=$2
-    echo -e "${GREEN}[✓] $action:${NC} $file"
-}
-
-# Function to show error
-show_error() {
-    local message=$1
-    echo -e "${RED}[✗] Error: $message${NC}"
-}
-
-# Function to show warning
-show_warning() {
-    local message=$1
-    echo -e "${YELLOW}[!] Warning: $message${NC}"
-}
-
-# Function to check if file should be excluded
-should_exclude() {
-    local file=$1
-    while IFS= read -r pattern; do
-        [[ -n "$pattern" && "$file" == *"$pattern"* ]] && return 0
-    done < "$EXCLUDE_FILE"
-    return 1
-}
-
-# Function to load custom extensions
-load_custom_extensions() {
-    if [[ -f "$CONFIG_FILE" ]]; then
-        while IFS='=' read -r type exts; do
-            if [[ -n "$type" && -n "$exts" ]]; then
-                file_types["$type"]="${file_types["$type"]} $exts"
-            fi
-        done < "$CONFIG_FILE"
-    fi
-}
-
-# Function to add custom extension
-add_custom_extension() {
-    local type=$1
-    local ext=$2
+# Function to initialize working environment
+init_environment() {
+    # Create necessary directories
+    mkdir -p "$CONFIG_DIR" "$CACHE_DIR" "$BACKUP_DIR" "$LOG_DIR" "$TEMP_DIR"
     
-    # Create or append to config file
-    mkdir -p "$(dirname "$CONFIG_FILE")"
-    echo "$type=$ext" >> "$CONFIG_FILE"
-    echo -e "${GREEN}[✓] Added custom extension .$ext to type $type${NC}"
-    log_operation "ADD_EXTENSION" "Type: $type, Extension: $ext"
-    load_custom_extensions
-}
-
-# Function to check if extension belongs to a type
-extension_in_type() {
-    local ext=$1
-    local type=$2
-    [[ " ${file_types[$type]} " =~ " $ext " ]]
-}
-
-# Function to get file type from extension
-get_file_type() {
-    local ext=$1
-    for type in "${!file_types[@]}"; do
-        if extension_in_type "$ext" "$type"; then
-            echo "$type"
-            return
-        fi
-    done
-    echo "other"
-}
-
-# Function to create date-based directory structure
-create_date_structure() {
-    local file=$1
-    local date=$(stat -f "%Sm" -t "%Y-%m-%d" "$file" 2>/dev/null || stat --format="%y" "$file" 2>/dev/null | cut -d' ' -f1)
-    local year=$(echo $date | cut -d'-' -f1)
-    local month=$(echo $date | cut -d'-' -f2)
-    local day=$(echo $date | cut -d'-' -f3)
-    echo "$year/$month/$day"
-}
-
-# Function to create size-based directory structure
-create_size_structure() {
-    local file=$1
-    local size=$(stat -f "%z" "$file" 2>/dev/null || stat --format="%s" "$file")
-    
-    if ((size < 1024)); then
-        echo "small"
-    elif ((size < 1024*1024)); then
-        echo "medium"
-    else
-        echo "large"
-    fi
-}
-
-# Function to move files
-move_files() {
-    local target=$1
-    local mode=$2
-    local simulate=${3:-false}
-    local any_moved=false
-    local total_size=0
-    local file_count=0
-    
-    echo -e "${BLUE}[i] Starting file organization...${NC}"
-    
-    for file in *; do
-        if [[ -f "$file" && "$file" != "$(basename $0)" ]]; then
-            if should_exclude "$file"; then
-                show_warning "Skipping excluded file: $file"
-                continue
-            fi
-            
-            local ext="${file##*.}"
-            ext=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
-            local type=$(get_file_type "$ext")
-            local dest_dir=""
-            
-            case "$mode" in
-                "date")
-                    dest_dir=$(create_date_structure "$file")
-                    ;;
-                "size")
-                    dest_dir=$(create_size_structure "$file")
-                    ;;
-                "type")
-                    dest_dir="$type"
-                    ;;
-                "extension")
-                    dest_dir="$ext"
-                    ;;
-                *)
-                    dest_dir="$type"
-                    ;;
-            esac
-            
-            # Skip if target specified and doesn't match
-            if [[ -n "$target" && "$type" != "$target" && "$ext" != "$target" ]]; then
-                continue
-            fi
-            
-            # Create directory if needed
-            if [[ ! -d "$dest_dir" && "$simulate" == "false" ]]; then
-                mkdir -p "$dest_dir"
-                echo -e "${BLUE}[i] Created directory:${NC} $dest_dir"
-            fi
-            
-            # Move or simulate moving the file
-            if [[ "$simulate" == "true" ]]; then
-                show_progress "$file" "Would move to $dest_dir"
-            else
-                mv "$file" "$dest_dir/"
-                show_progress "$file" "Moved to $dest_dir"
-                log_operation "MOVE" "$file -> $dest_dir/"
-            fi
-            
-            any_moved=true
-            ((file_count++))
-            total_size=$((total_size + $(stat -f "%z" "$file" 2>/dev/null || stat --format="%s" "$file")))
-        fi
-    done
-    
-    if [[ "$any_moved" == "false" ]]; then
-        echo -e "${YELLOW}[!] No files were moved${NC}"
-    else
-        echo -e "\n${GREEN}[✓] Operation completed:${NC}"
-        echo "   Files processed: $file_count"
-        echo "   Total size: $(human_readable_size $total_size)"
-    fi
-}
-
-# Function to list supported types
-list_types() {
-    echo -e "${BLUE}Supported file types:${NC}"
-    for type in "${!file_types[@]}"; do
-        echo -e "${BOLD}$type${NC}:"
-        echo "  ${file_types[$type]}" | fold -s -w 70 | sed 's/^/    /'
-    done
-}
-
-# Function to show version
-show_version() {
-    echo -e "${BOLD}${CYAN}$AUTHOR${NC}"
-    echo -e "Version: $VERSION"
-    echo -e "Copyright (c) $YEAR"
-}
-
-# Function to show history
-show_history() {
-    local lines=${1:-10}
-    echo -e "${BLUE}Recent operations (last $lines):${NC}"
-    tail -n "$lines" "$HISTORY_FILE"
-}
-
-# Function to print usage information
-print_usage() {
-    show_version
-    echo -e "\n${BLUE}Usage:${NC}"
-    echo -e "${BOLD}Basic Commands:${NC}"
-    echo "  $SCRIPT_NAME                - Move all files to type-based folders"
-    echo "  $SCRIPT_NAME help           - Show this help message"
-    echo "  $SCRIPT_NAME version        - Show version information"
-    
-    echo -e "\n${BOLD}Sorting Commands:${NC}"
-    echo "  $SCRIPT_NAME date           - Sort files by creation date (YYYY/MM/DD)"
-    echo "  $SCRIPT_NAME type           - Sort files by type (default behavior)"
-    echo "  $SCRIPT_NAME extension      - Sort files by extension"
-    echo "  $SCRIPT_NAME size           - Sort files by size (small/medium/large)"
-    
-    echo -e "\n${BOLD}File Type Commands:${NC}"
-    echo "  $SCRIPT_NAME {type}        - Move only files of specified type"
-    echo "  $SCRIPT_NAME {extension}   - Move only files with specified extension"
-    
-    echo -e "\n${BOLD}Management Commands:${NC}"
-    echo "  $SCRIPT_NAME add type ext  - Add custom extension to type"
-    echo "  $SCRIPT_NAME list          - List all supported file types"
-    echo "  $SCRIPT_NAME history [n]   - Show last n operations (default: 10)"
-    echo "  $SCRIPT_NAME simulate      - Show what would be moved without moving"
-    echo "  $SCRIPT_NAME stats         - Show statistics about current directory"
-    
-    echo -e "\n${BOLD}Examples:${NC}"
-    echo "  $SCRIPT_NAME               # Sort all files by type"
-    echo "  $SCRIPT_NAME date          # Sort by date"
-    echo "  $SCRIPT_NAME image         # Move only image files"
-    echo "  $SCRIPT_NAME add code jsx  # Add .jsx extension to code type"
-}
-
-# Function to show directory statistics
-show_stats() {
-    echo -e "${BLUE}Directory Statistics:${NC}"
-    echo -e "${BOLD}Current directory:${NC} $(pwd)"
-    echo -e "${BOLD}Total:${NC} $(get_directory_stats ".")"
-    
-    echo -e "\n${BOLD}By type:${NC}"
-    for type in "${!file_types[@]}"; do
-        local count=$(find . -maxdepth 1 -type f -exec sh -c "echo {} | grep -iE '\\.($(echo ${file_types[$type]} | tr ' ' '|'))$'" \; | wc -l)
-        if [[ $count -gt 0 ]]; then
-            echo "  $type: $count files"
-        fi
-    done
-}
-
-# Initialize configuration
-init_config
-load_custom_extensions
-
-# Main logic
-case "$1" in
-    "help"|"-h"|"--help")
-        print_usage
-        ;;
-    "version"|"-v"|"--version")
-        show_version
-        ;;
-    "list"|"types")
-        list_types
-        ;;
-    "history")
-        show_history "${2:-10}"
-        ;;
-    "stats")
-        show_stats
-        ;;
-    "simulate")
-        move_files "" "type" true
-        ;;
-    "date")
-        move_files "" "date"
-        ;;
-    "type")
-        move_files "" "type"
-        ;;
-    "size")
-        move_files "" "size"
-        ;;
-    "extension")
-        move_files "" "extension"
-        ;;
-    "add")
-        if [[ -n "$2" && -n "$3" ]]; then
-            add_custom_extension "$2" "$3"
-        else
-            show_error "Usage: $SCRIPT_NAME add {type} {extension}"
+    # Initialize lock file
+    if [ -f "$LOCK_FILE" ]; then
+        local pid=$(cat "$LOCK_FILE")
+        if ps -p "$pid" > /dev/null; then
+            show_error "Another instance is running (PID: $pid)"
             exit 1
         fi
-        ;;
-    "")
-        move_files "" "type"
-        ;;
-    *)
-        if [[ -n "${file_types[$1]}" ]]; then
-            move_files "$1" "type"
-        else
-            # Check if it's an extension
-            ext=$(echo "$1" | tr '[:upper:]' '[:lower:]')
-            move_files "$ext" "type"
+    fi
+    echo $$ > "$LOCK_FILE"
+    
+    # Set up trap for cleanup
+    trap cleanup EXIT INT TERM
+}
+
+# Function for enhanced logging
+log_operation() {
+    local level=$1
+    local operation=$2
+    local details=$3
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S.%N')
+    local log_entry="[$timestamp][$level][$operation] $details"
+    
+    # Write to appropriate log file
+    case "$level" in
+        "ERROR")
+            echo "$log_entry" >> "$ERROR_LOG"
+            [ $LOG_LEVEL -ge 1 ] && echo -e "${RED}[ERROR] $details${NC}"
+            ;;
+        "WARNING")
+            [ $LOG_LEVEL -ge 2 ] && echo "$log_entry" >> "$HISTORY_FILE"
+            [ $LOG_LEVEL -ge 2 ] && echo -e "${YELLOW}[WARNING] $details${NC}"
+            ;;
+        "INFO")
+            [ $LOG_LEVEL -ge 3 ] && echo "$log_entry" >> "$HISTORY_FILE"
+            [ $LOG_LEVEL -ge 3 ] && [ "$QUIET_MODE" = false ] && echo -e "${BLUE}[INFO] $details${NC}"
+            ;;
+        "DEBUG")
+            [ $LOG_LEVEL -ge 4 ] && echo "$log_entry" >> "$DEBUG_LOG"
+            [ $LOG_LEVEL -ge 4 ] && [ "$DEBUG_MODE" = true ] && echo -e "${DIM}[DEBUG] $details${NC}"
+            ;;
+        "SUCCESS")
+            echo "$log_entry" >> "$HISTORY_FILE"
+            [ "$QUIET_MODE" = false ] && echo -e "${GREEN}[SUCCESS] $details${NC}"
+            ;;
+    esac
+}
+
+# Function to rotate logs
+rotate_logs() {
+    local max_size=10485760  # 10MB
+    local max_files=5
+    
+    for log_file in "$ERROR_LOG" "$HISTORY_FILE" "$DEBUG_LOG"; do
+        if [ -f "$log_file" ] && [ $(stat -f%z "$log_file" 2>/dev/null || stat -c%s "$log_file") -gt $max_size ]; then
+            for i in $(seq $max_files -1 1); do
+                [ -f "${log_file}.$i" ] && mv "${log_file}.$i" "${log_file}.$((i+1))"
+            done
+            mv "$log_file" "${log_file}.1"
+            touch "$log_file"
         fi
-        ;;
-esac
+    done
+}
+
+# Function to calculate file checksum
+calculate_checksum() {
+    local file=$1
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$file" | cut -d' ' -f1
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$file" | cut -d' ' -f1
+    else
+        md5sum "$file" | cut -d' ' -f1
+    fi
+}
+
+# Function to compress file
+compress_file() {
+    local file=$1
+    local compressed_file="${file}.gz"
+    if [ "$COMPRESSION_ENABLED" = true ]; then
+        if gzip -c "$file" > "$compressed_file"; then
+            rm -f "$file"
+            echo "$compressed_file"
+        else
+            echo "$file"
+        fi
+    else
+        echo "$file"
+    fi
+}
+
+# Function to extract metadata
+extract_metadata() {
+    local file=$1
+    local metadata_file="$TEMP_DIR/metadata_$(basename "$file")"
+    
+    # Try different tools for metadata extraction
+    if command -v exiftool >/dev/null 2>&1; then
+        exiftool "$file" > "$metadata_file"
+    elif command -v mediainfo >/dev/null 2>&1; then
+        mediainfo "$file" > "$metadata_file"
+    else
+        file "$file" > "$metadata_file"
+    fi
+    
+    echo "$metadata_file"
+}
+
+# Function for smart file type detection
+detect_file_type() {
+    local file=$1
+    local mime_type=$(file --mime-type -b "$file")
+    local ext="${file##*.}"
+    
+    # First try by mime type
+    case "$mime_type" in
+        image/*) echo "images" ;;
+        video/*) echo "videos" ;;
+        audio/*) echo "audio" ;;
+        text/*) echo "documents" ;;
+        application/pdf) echo "documents" ;;
+        application/zip|application/x-rar|application/x-7z-compressed) echo "archives" ;;
+        application/x-executable) echo "executables" ;;
+        *) 
+            # Try by extension if mime type is not conclusive
+            for type in "${!file_types[@]}"; do
+                if [[ " ${file_types[$type]} " =~ " $ext " ]]; then
+                    echo "$type"
+                    return
+                fi
+            done
+            echo "other"
+            ;;
+    esac
+}
+
+# Function to verify file operation
+verify_operation() {
+    local source=$1
+    local dest=$2
+    local operation=$3
+    
+    case "$operation" in
+        "move")
+            if [ ! -f "$dest" ]; then
+                log_operation "ERROR" "VERIFY" "Destination file missing: $dest"
+                return 1
+            fi
+            if [ "$CHECKSUM_VERIFY" = true ]; then
+                local source_sum=$(calculate_checksum "$source")
+                local dest_sum=$(calculate_checksum "$dest")
+                if [ "$source_sum" != "$dest_sum" ]; then
+                    log_operation "ERROR" "VERIFY" "Checksum mismatch for $dest"
+                    return 1
+                fi
+            fi
+            ;;
+        "backup")
+            if [ ! -f "$dest" ]; then
+                log_operation "ERROR" "VERIFY" "Backup file missing: $dest"
+                return 1
+            fi
+            ;;
+    esac
+    return 0
+}
+
+# Function to create backup with versioning
+create_backup() {
+    local file=$1
+    local timestamp=$(date +%Y%m%d_%H%M%S)
+    local backup_path="$BACKUP_DIR/$(basename "$file").$timestamp"
+    
+    if [ "$BACKUP_ENABLED" = true ]; then
+        if cp -p "$file" "$backup_path"; then
+            if [ "$COMPRESSION_ENABLED" = true ]; then
+                backup_path=$(compress_file "$backup_path")
+            fi
+            verify_operation "$file" "$backup_path" "backup"
+            log_operation "INFO" "BACKUP" "Created backup: $backup_path"
+            echo "$backup_path"
+        else
+            log_operation "ERROR" "BACKUP" "Failed to create backup for $file"
+            return 1
+        fi
+    fi
+}
+
+# Function to manage backup versions
+manage_backups() {
+    local max_backups=5
+    local max_age=7  # days
+    
+    # Remove old backups
+    find "$BACKUP_DIR" -type f -mtime +$max_age -delete
+    
+    # Keep only latest versions
+    for file in "$BACKUP_DIR"/*; do
+        if [ -f "$file" ]; then
+            local base_name=$(basename "$file" | cut -d. -f1)
+            local count=$(ls -t "$BACKUP_DIR/$base_name"* 2>/dev/null | wc -l)
+            if [ "$count" -gt "$max_backups" ]; then
+                ls -t "$BACKUP_DIR/$base_name"* | tail -n +$((max_backups+1)) | xargs rm -f
+            fi
+        fi
+    done
+}
+
+# Function to handle file operations safely
+safe_operation() {
+    local source=$1
+    local dest=$2
+    local operation=$3
+    
+    # Safety checks
+    if is_protected_path "$source" || is_protected_path "$dest"; then
+        log_operation "ERROR" "SAFETY" "Protected path detected: $source -> $dest"
+        return 1
+    fi
+    
+    # Check disk space
+    check_disk_space "$dest"
+    
+    # Create backup if enabled
+    if [ "$BACKUP_ENABLED" = true ]; then
+        create_backup "$source"
+    fi
+    
+    # Perform operation
+    if [ "$DRY_RUN" = false ]; then
+        case "$operation" in
+            "move")
+                if mv "$source" "$dest"; then
+                    verify_operation "$source" "$dest" "move"
+                    log_operation "SUCCESS" "MOVE" "$source -> $dest"
+                else
+                    log_operation "ERROR" "MOVE" "Failed to move $source"
+                    return 1
+                fi
+                ;;
+            "copy")
+                if cp -p "$source" "$dest"; then
+                    verify_operation "$source" "$dest" "copy"
+                    log_operation "SUCCESS" "COPY" "$source -> $dest"
+                else
+                    log_operation "ERROR" "COPY" "Failed to copy $source"
+                    return 1
+                fi
+                ;;
+        esac
+    else
+        log_operation "INFO" "DRY_RUN" "Would $operation $source -> $dest"
+    fi
+}
+
+# Function to process file based on rules
+process_file() {
+    local file=$1
+    local mode=${2:-$SORT_MODE}
+    
+    # Skip if file is in protected path
+    if is_protected_path "$file"; then
+        log_operation "WARNING" "SKIP" "Protected path: $file"
+        return 1
+    }
+    
+    # Get file info
+    local filename=$(basename "$file")
+    local ext="${filename##*.}"
+    ext=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
+    
+    # Get metadata
+    local metadata_file=$(extract_metadata "$file")
+    
+    # Determine destination based on mode
+    local dest_dir=""
+    case "$mode" in
+        "smart")
+            dest_dir=$(get_smart_destination "$file" "$metadata_file")
+            ;;
+        "date")
+            dest_dir=$(get_date_structure "$file")
+            ;;
+        "type")
+            dest_dir=$(detect_file_type "$file")
+            ;;
+        "size")
+            dest_dir=$(get_size_category "$file")
+            ;;
+        "extension")
+            dest_dir="by_extension/$ext"
+            ;;
+        "custom")
+            dest_dir=$(apply_custom_rules "$file" "$metadata_file")
+            ;;
+    esac
+    
+    # Process the file
+    if [ -n "$dest_dir" ]; then
+        if [ ! -d "$dest_dir" ]; then
+            mkdir -p "$dest_dir"
+        fi
+        safe_operation "$file" "$dest_dir/$filename" "move"
+    else
+        log_operation "WARNING" "PROCESS" "Could not determine destination for $file"
+        return 1
+    fi
+}
+
+# Function to get smart destination
+get_smart_destination() {
+    local file=$1
+    local metadata_file=$2
+    local dest=""
+    
+    # Check file content and metadata
+    local mime_type=$(file --mime-type -b "$file")
+    local file_type=$(detect_file_type "$file")
+    
+    # Apply smart rules
+    case "$mime_type" in
+        "image/"*)
+            # Check if it's a screenshot
+            if [[ "$(basename "$file")" =~ ^Screenshot|^Screen[[:space:]]Shot|^Capture ]]; then
+                dest="screenshots/$(date +%Y/%m)"
+            else
+                dest="images/$(date +%Y/%m)"
+            fi
+            ;;
+        "video/"*)
+            # Check video duration if possible
+            if command -v ffprobe >/dev/null 2>&1; then
+                duration=$(ffprobe -v quiet -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$file")
+                if [ "${duration%.*}" -lt 60 ]; then
+                    dest="videos/shorts"
+                else
+                    dest="videos/full"
+                fi
+            else
+                dest="videos"
+            fi
+            ;;
+        "application/pdf")
+            # Check if it's a scanned document
+            if grep -q "scanned" "$metadata_file"; then
+                dest="documents/scanned"
+            else
+                dest="documents/pdf"
+            fi
+            ;;
+        *)
+            dest="$file_type"
+            ;;
+    esac
+    
+    echo "$dest"
+}
+
+# Function to get date-based structure
+get_date_structure() {
+    local file=$1
+    local date_created=$(stat -f "%SB" "$file" 2>/dev/null || stat -c "%y" "$file")
+    local year=$(date -d "$date_created" +%Y 2>/dev/null || date -j -f "%F %T" "$date_created" +%Y)
+    local month=$(date -d "$date_created" +%m 2>/dev/null || date -j -f "%F %T" "$date_created" +%m)
+    echo "by_date/$year/$month"
+}
+
+# Function to get size category
+get_size_category() {
+    local file=$1
+    local size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file")
+    
+    if [ "$size" -lt 1048576 ]; then        # < 1MB
+        echo "by_size/small"
+    elif [ "$size" -lt 104857600 ]; then    # < 100MB
+        echo "by_size/medium"
+    elif [ "$size" -lt 1073741824 ]; then   # < 1GB
+        echo "by_size/large"
+    else
+        echo "by_size/huge"
+    fi
+}
+
+# Function to apply custom rules
+apply_custom_rules() {
+    local file=$1
+    local metadata_file=$2
+    local rules_file="$CONFIG_DIR/rules.json"
+    
+    if [ -f "$rules_file" ]; then
+        # Parse rules and apply them
+        while IFS= read -r rule; do
+            if eval "$rule" "$file" "$metadata_file"; then
+                echo "$dest"
+                return 0
+            fi
+        done < "$rules_file"
+    fi
+    
+    # Default fallback
+    echo "uncategorized"
+}
+
+# Function to generate statistics
+generate_statistics() {
+    local dir=${1:-.}
+    local stats_file="$TEMP_DIR/stats.json"
+    
+    echo "{" > "$stats_file"
+    echo "  \"timestamp\": \"$(date '+%Y-%m-%d %H:%M:%S')\"," >> "$stats_file"
+    echo "  \"total_files\": $(find "$dir" -type f | wc -l)," >> "$stats_file"
+    echo "  \"total_size\": \"$(du -sh "$dir" | cut -f1)\"," >> "$stats_file"
+    echo "  \"by_type\": {" >> "$stats_file"
+    
+    local first=true
+    for type in "${!file_types[@]}"; do
+        local count=$(find "$dir" -type f -exec file --mime-type {} \; | grep -c "$type")
+        local size=$(find "$dir" -type f -exec file --mime-type {} \; | grep "$type" | xargs -I {} du -ch {} 2>/dev/null | tail -n1 | cut -f1)
+        
+        if [ "$first" = true ]; then
+            first=false
+        else
+            echo "    ," >> "$stats_file"
+        fi
+        
+        echo "    \"$type\": {" >> "$stats_file"
+        echo "      \"count\": $count," >> "$stats_file"
+        echo "      \"size\": \"$size\"" >> "$stats_file"
+        echo "    }" >> "$stats_file"
+    done
+    
+    echo "  }" >> "$stats_file"
+    echo "}" >> "$stats_file"
+    
+    echo "$stats_file"
+}
+
+# Function to show interactive menu
+show_menu() {
+    while true; do
+        clear
+        show_banner
+        echo -e "\n${BOLD}Main Menu:${NC}"
+        echo "1. Sort files"
+        echo "2. Analyze directory"
+        echo "3. Show statistics"
+        echo "4. Manage backups"
+        echo "5. Configure settings"
+        echo "6. View logs"
+        echo "7. Help"
+        echo "8. Exit"
+        
+        read -p "Choose an option (1-8): " choice
+        
+        case $choice in
+            1) sort_menu ;;
+            2) analyze_menu ;;
+            3) stats_menu ;;
+            4) backup_menu ;;
+            5) settings_menu ;;
+            6) logs_menu ;;
+            7) show_help ;;
+            8) exit 0 ;;
+            *) echo "Invalid option" ;;
+        esac
+    done
+}
+
+# Main script execution
+main() {
+    # Initialize environment
+    init_environment
+    
+    # Parse command line arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --help|-h)
+                show_help
+                exit 0
+                ;;
+            --version|-v)
+                show_version
+                exit 0
+                ;;
+            --interactive|-i)
+                INTERACTIVE=true
+                shift
+                ;;
+            --dry-run|-d)
+                DRY_RUN=true
+                shift
+                ;;
+            --verbose)
+                VERBOSE=true
+                shift
+                ;;
+            --quiet|-q)
+                QUIET_MODE=true
+                shift
+                ;;
+            --debug)
+                DEBUG_MODE=true
+                LOG_LEVEL=4
+                shift
+                ;;
+            --force|-f)
+                FORCE_MODE=true
+                shift
+                ;;
+            --no-backup)
+                BACKUP_ENABLED=false
+                shift
+                ;;
+            --compress|-c)
+                COMPRESSION_ENABLED=true
+                shift
+                ;;
+            --mode|-m)
+                SORT_MODE="$2"
+                shift 2
+                ;;
+            --depth)
+                MAX_DEPTH="$2"
+                shift 2
+                ;;
+            --analyze|-a)
+                analyze_directory "${2:-.}"
+                exit 0
+                ;;
+            --stats|-s)
+                show_statistics "${2:-.}"
+                exit 0
+                ;;
+            --clean)
+                clean_directory "${2:-.}"
+                exit 0
+                ;;
+            *)
+                if [ "$INTERACTIVE" = true ]; then
+                    show_menu
+                else
+                    process_directory "${1:-.}" "$SORT_MODE"
+                fi
+                shift
+                ;;
+        esac
+    done
+    
+    # Show menu if no arguments and interactive mode
+    if [ "$INTERACTIVE" = true ]; then
+        show_menu
+    fi
+}
+
+# Initialize and run
+trap cleanup EXIT INT TERM
+main "$@"
