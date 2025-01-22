@@ -29,10 +29,10 @@ This script is perfect for:
 
 1. **Download the script**    
    ```bash
-   git clone https://github.com/revylab/FileShorter.git
+   git clone https://github.com/revyid/FileShorter.git
    ```
    or
-   <a href="https://github.com/revylab/FileShorter/releases">Release</a>
+   <a href="https://github.com/revyid/FileShorter/releases">Release</a>
 
 3. **Navigate to the project directory**  
    ```bash
